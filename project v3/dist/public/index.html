@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Idaho Legislative Video Processor</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .upload-container {
+            border: 2px dashed #ccc;
+            padding: 20px;
+            text-align: center;
+            margin: 20px 0;
+            border-radius: 8px;
+        }
+        .upload-container.dragover {
+            border-color: #4CAF50;
+            background-color: #f1f8e9;
+        }
+        #progress-container {
+            display: none;
+            margin-top: 20px;
+        }
+        #status {
+            margin-top: 20px;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .success {
+            background-color: #dff0d8;
+            color: #3c763d;
+        }
+        .error {
+            background-color: #f2dede;
+            color: #a94442;
+        }
+    </style>
+</head>
+<body>
+    <h1>Idaho Legislative Video Processor</h1>
+    <div class="upload-container" id="drop-zone">
+        <h2>Upload Legislative Video</h2>
+        <p>Drag and drop a video file here or click to select</p>
+        <p>Maximum file size: 2GB</p>
+        <input type="file" id="file-input" accept="video/*" style="display: none">
+        <button onclick="document.getElementById('file-input').click()">Select Video</button>
+    </div>
+    <div id="progress-container">
+        <h3>Processing Progress</h3>
+        <p>Uploading and processing your video. This may take several minutes...</p>
+        <progress id="progress" value="0" max="100"></progress>
+        <p id="upload-stats"></p>
+    </div>
+    <div id="status"></div>
+
+    <script>
+        const CHUNK_SIZE = 10 * 1024 * 1024; // 10MB chunks
+
+        async function downloadClips(sessionId) {
+            try {
+                const response = await fetch(`/api/download/${sessionId}`);
+                if (!response.ok) throw new Error('Download failed');
+                
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'legislative-clips.zip';
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                a.remove();
+            } catch (error) {
+                console.error('Download error:', error);
+                status.className = 'error';
+                status.textContent = 'Error downloading clips: ' + error.message;
+            }
+        }
+
+        async function uploadChunked(file) {
+            const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+            let uploadedChunks = 0;
+            
+            progressContainer.style.display = 'block';
+            status.className = '';
+            status.textContent = '';
+
+            try {
+                for (let start = 0; start < file.size; start += CHUNK_SIZE) {
+                    const chunk = file.slice(start, start + CHUNK_SIZE);
+                    const formData = new FormData();
+                    formData.append('video', chunk, file.name);
+
+                    await fetch('/api/upload', {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    uploadedChunks++;
+                    const percentComplete = (uploadedChunks / totalChunks) * 100;
+                    progress.value = percentComplete;
+                    
+                    const uploadedMB = (uploadedChunks * CHUNK_SIZE / (1024 * 1024)).toFixed(1);
+                    const totalMB = (file.size / (1024 * 1024)).toFixed(1);
+                    document.getElementById('upload-stats').textContent = 
+                        `Uploaded: ${uploadedMB}MB / ${totalMB}MB`;
+                }
+
+                const response = await fetch('/api/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+
+                if (data.sessionId) {
+                    status.className = 'success';
+                    status.textContent = 'Video processed successfully! Downloading clips...';
+                    await downloadClips(data.sessionId);
+                }
+            } catch (error) {
+                status.className = 'error';
+                status.textContent = 'Error processing video: ' + error.message;
+            } finally {
+                progressContainer.style.display = 'none';
+            }
+        }
+
+        // Drag and drop handlers
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+        const progressContainer = document.getElementById('progress-container');
+        const progress = document.getElementById('progress');
+        const status = document.getElementById('status');
+
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('dragover');
+        });
+
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('dragover');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            const file = e.dataTransfer.files[0];
+            if (file && file.type.startsWith('video/')) {
+                uploadChunked(file);
+            }
+        });
+
+        fileInput.addEventListener('change', () => {
+            const file = fileInput.files[0];
+            if (file) {
+                uploadChunked(file);
+            }
+        });
+    </script>
+</body>
+</html>
