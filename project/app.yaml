@@ -3,7 +3,7 @@ services:
   - name: web
     git:
       branch: main
-      repo_clone_url: ${YOUR_REPOSITORY_URL}
+      repo_clone_url: https://github.com/conner208/IDLegVidApp
     build_command: npm install && npm run build
     run_command: npm start
     envs:
