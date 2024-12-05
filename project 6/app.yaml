@@ -1,0 +1,27 @@
+name: idaho-legislative-processor
+services:
+  - name: web
+    git:
+      branch: main
+      repo_clone_url: https://github.com/conner208/IDLegVidApp
+    build_command: npm install && npm run build
+    run_command: npm start
+    envs:
+      - key: NODE_ENV
+        value: production
+    buildpacks:
+      - name: heroku/nodejs
+      - name: https://github.com/jonathanong/heroku-buildpack-ffmpeg-latest.git
+    instance_count: 1
+    instance_size_slug: professional-xs
+    http_port: 3000
+    routes:
+      - path: /
+    health_check:
+      http_path: /
+    alert_policies:
+      - name: high-cpu
+        rule: CPU_UTILIZATION_PERCENT > 80
+        operator: GREATER_THAN
+        window: FIVE_MINUTES
+        period: TEN_MINUTES
